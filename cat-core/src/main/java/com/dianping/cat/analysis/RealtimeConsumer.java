@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2011-2018, Meituan Dianping. All Rights Reserved.
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements. See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.dianping.cat.analysis;
 
 import java.util.List;
@@ -9,17 +27,19 @@ import org.codehaus.plexus.personality.plexus.lifecycle.phase.InitializationExce
 import org.unidal.helper.Threads;
 import org.unidal.lookup.ContainerHolder;
 import org.unidal.lookup.annotation.Inject;
+import org.unidal.lookup.annotation.Named;
 
 import com.dianping.cat.Cat;
-import com.dianping.cat.CatConstants;
-import com.dianping.cat.config.server.BlackListManager;
 import com.dianping.cat.message.Message;
-import com.dianping.cat.message.MessageProducer;
 import com.dianping.cat.message.Transaction;
 import com.dianping.cat.message.spi.MessageTree;
 import com.dianping.cat.statistic.ServerStatisticManager;
 
+@Named(type = MessageConsumer.class)
 public class RealtimeConsumer extends ContainerHolder implements MessageConsumer, Initializable, LogEnabled {
+	public static final long MINUTE = 60 * 1000L;
+
+	public static final long HOUR = 60 * MINUTE;
 
 	@Inject
 	private MessageAnalyzerManager m_analyzerManager;
@@ -27,52 +47,31 @@ public class RealtimeConsumer extends ContainerHolder implements MessageConsumer
 	@Inject
 	private ServerStatisticManager m_serverStateManager;
 
-	@Inject
-	private BlackListManager m_blackListManager;
-
 	private PeriodManager m_periodManager;
-
-	private long m_black = -1;
 
 	private Logger m_logger;
 
-	public static final long MINUTE = 60 * 1000L;
-
-	public static final long HOUR = 60 * MINUTE;
-
 	@Override
 	public void consume(MessageTree tree) {
-		String domain = tree.getDomain();
-		String ip = tree.getIpAddress();
+		long timestamp = getTimestamp(tree);
+		Period period = m_periodManager.findPeriod(timestamp);
 
-		if (!m_blackListManager.isBlack(domain, ip)) {
-			long timestamp = tree.getMessage().getTimestamp();
-			Period period = m_periodManager.findPeriod(timestamp);
-
-			if (period != null) {
-				period.distribute(tree);
-			} else {
-				m_serverStateManager.addNetworkTimeError(1);
-			}
+		if (period != null) {
+			period.distribute(tree);
 		} else {
-			m_black++;
-
-			if (m_black % CatConstants.SUCCESS_COUNT == 0) {
-				Cat.logEvent("Discard", domain);
-			}
+			m_serverStateManager.addNetworkTimeError(1);
 		}
 	}
 
 	public void doCheckpoint() {
 		m_logger.info("starting do checkpoint.");
-		MessageProducer cat = Cat.getProducer();
-		Transaction t = cat.newTransaction("Checkpoint", getClass().getSimpleName());
+		Transaction t = Cat.newTransaction("Checkpoint", getClass().getSimpleName());
 
 		try {
 			long currentStartTime = getCurrentStartTime();
 			Period period = m_periodManager.findPeriod(currentStartTime);
 
-			for (MessageAnalyzer analyzer : period.getAnalzyers()) {
+			for (MessageAnalyzer analyzer : period.getAnalyzers()) {
 				try {
 					analyzer.doCheckpoint(false);
 				} catch (Exception e) {
@@ -88,7 +87,7 @@ public class RealtimeConsumer extends ContainerHolder implements MessageConsumer
 			}
 			t.setStatus(Message.SUCCESS);
 		} catch (RuntimeException e) {
-			cat.logError(e);
+			Cat.logError(e);
 			t.setStatus(e);
 		} finally {
 			t.complete();
@@ -101,6 +100,7 @@ public class RealtimeConsumer extends ContainerHolder implements MessageConsumer
 		m_logger = logger;
 	}
 
+	@Override
 	public List<MessageAnalyzer> getCurrentAnalyzer(String name) {
 		long currentStartTime = getCurrentStartTime();
 		Period period = m_periodManager.findPeriod(currentStartTime);
@@ -114,11 +114,11 @@ public class RealtimeConsumer extends ContainerHolder implements MessageConsumer
 
 	private long getCurrentStartTime() {
 		long now = System.currentTimeMillis();
-		long time = now - now % HOUR;
 
-		return time;
+		return now - now % HOUR;
 	}
 
+	@Override
 	public List<MessageAnalyzer> getLastAnalyzer(String name) {
 		long lastStartTime = getCurrentStartTime() - HOUR;
 		Period period = m_periodManager.findPeriod(lastStartTime);
@@ -126,12 +126,24 @@ public class RealtimeConsumer extends ContainerHolder implements MessageConsumer
 		return period == null ? null : period.getAnalyzer(name);
 	}
 
+	private long getTimestamp(MessageTree tree) {
+		Message message = tree.getMessage();
+
+		if (message != null) {
+			return message.getTimestamp();
+		} else if (!tree.getMetrics().isEmpty()) {
+			return tree.getMetrics().get(0).getTimestamp();
+		} else {
+			return 0;
+		}
+	}
+
 	@Override
 	public void initialize() throws InitializationException {
 		m_periodManager = new PeriodManager(HOUR, m_analyzerManager, m_serverStateManager, m_logger);
 		m_periodManager.init();
 
-		Threads.forGroup("cat").start(m_periodManager);
+		Threads.forGroup("Cat").start(m_periodManager);
 	}
 
 }

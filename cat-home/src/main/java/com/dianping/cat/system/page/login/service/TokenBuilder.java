@@ -1,5 +1,24 @@
+/*
+ * Copyright (c) 2011-2018, Meituan Dianping. All Rights Reserved.
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements. See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.dianping.cat.system.page.login.service;
 
+import com.dianping.cat.util.HttpUtils;
 import java.io.UnsupportedEncodingException;
 import java.util.regex.Pattern;
 
@@ -15,7 +34,7 @@ public class TokenBuilder implements ITokenBuilder<SigninContext, Token> {
 		StringBuilder sb = new StringBuilder(256);
 		String userName = token.getUserName();
 		String userNameValue = "";
-		
+
 		try {
 			userNameValue = java.net.URLEncoder.encode(userName, "utf-8");
 		} catch (UnsupportedEncodingException e) {
@@ -30,7 +49,7 @@ public class TokenBuilder implements ITokenBuilder<SigninContext, Token> {
 		sb.append(value).append(SP);
 		sb.append(userNameValue).append(SP);
 		sb.append(System.currentTimeMillis()).append(SP);
-		sb.append(ctx.getRequest().getRemoteAddr()).append(SP);
+		sb.append(HttpUtils.getRemoteAddress(ctx.getRequest())).append(SP);
 		sb.append(getCheckSum(sb.toString()));
 
 		return sb.toString();
@@ -54,9 +73,19 @@ public class TokenBuilder implements ITokenBuilder<SigninContext, Token> {
 			int expectedCheckSum = getCheckSum(value.substring(0, value.lastIndexOf(SP) + 1));
 
 			if (checkSum == expectedCheckSum) {
-				if (remoteIp.equals(ctx.getRequest().getRemoteAddr())) {
+				if (remoteIp.equals(HttpUtils.getRemoteAddress(ctx.getRequest()))) {
 					if (lastLoginDate + ONE_DAY > System.currentTimeMillis()) {
-						return new Token( realName, userName);
+						String realNameValue = "";
+						String userNameVaule = "";
+						try {
+							realNameValue = java.net.URLDecoder.decode(realName, "utf-8");
+						} catch (UnsupportedEncodingException e) {
+						}
+						try {
+							userNameVaule = java.net.URLDecoder.decode(userName, "utf-8");
+						} catch (UnsupportedEncodingException e) {
+						}
+						return new Token(realNameValue, userNameVaule);
 					}
 				}
 			}

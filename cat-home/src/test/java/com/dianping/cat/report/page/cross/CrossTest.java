@@ -1,11 +1,30 @@
+/*
+ * Copyright (c) 2011-2018, Meituan Dianping. All Rights Reserved.
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements. See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.dianping.cat.report.page.cross;
 
 import org.junit.Test;
 
 import com.dianping.cat.Cat;
+import com.dianping.cat.message.MessageTree;
 import com.dianping.cat.message.Transaction;
-import com.dianping.cat.message.spi.MessageTree;
-import com.dianping.cat.message.spi.internal.DefaultMessageTree;
+import com.dianping.cat.message.context.TraceContextHelper;
+import com.dianping.cat.message.spi.DefaultMessageTree;
 
 public class CrossTest {
 	@Test
@@ -44,7 +63,7 @@ public class CrossTest {
 
 	private void sendServiceMsg(String method, String server, String serverIp, String client, String clientIp) {
 		Transaction t = Cat.newTransaction("PigeonService", method);
-		MessageTree tree = Cat.getManager().getThreadLocalMessageTree();
+		MessageTree tree = TraceContextHelper.threadLocal().getMessageTree();
 		((DefaultMessageTree) tree).setDomain(server);
 		((DefaultMessageTree) tree).setIpAddress(serverIp);
 		Cat.logEvent("PigeonService.client", clientIp);
@@ -55,7 +74,7 @@ public class CrossTest {
 
 	private void sendClientMsg(String method, String client, String clientIp, String server, String serverIp) {
 		Transaction t = Cat.newTransaction("PigeonCall", method);
-		MessageTree tree = Cat.getManager().getThreadLocalMessageTree();
+		MessageTree tree = TraceContextHelper.threadLocal().getMessageTree();
 		((DefaultMessageTree) tree).setDomain(client);
 		((DefaultMessageTree) tree).setIpAddress(clientIp);
 		Cat.logEvent("PigeonCall.server", serverIp);

@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2011-2018, Meituan Dianping. All Rights Reserved.
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements. See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.dianping.cat.status;
 
 import java.net.URL;
@@ -7,29 +25,28 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
-import org.codehaus.plexus.personality.plexus.lifecycle.phase.Initializable;
-import org.codehaus.plexus.personality.plexus.lifecycle.phase.InitializationException;
-import org.unidal.helper.Threads.Task;
-import org.unidal.lookup.annotation.Inject;
-
 import com.dianping.cat.Cat;
-import com.dianping.cat.configuration.ClientConfigManager;
+import com.dianping.cat.component.ComponentContext;
+import com.dianping.cat.component.lifecycle.Initializable;
+import com.dianping.cat.configuration.ConfigureManager;
+import com.dianping.cat.configuration.ConfigureProperty;
 import com.dianping.cat.configuration.NetworkInterfaceManager;
+import com.dianping.cat.message.Event;
 import com.dianping.cat.message.Heartbeat;
 import com.dianping.cat.message.Message;
-import com.dianping.cat.message.MessageProducer;
 import com.dianping.cat.message.Transaction;
 import com.dianping.cat.message.internal.MilliSecondTimer;
-import com.dianping.cat.message.spi.MessageStatistics;
 import com.dianping.cat.status.model.entity.Extension;
 import com.dianping.cat.status.model.entity.StatusInfo;
+import com.dianping.cat.support.Threads.Task;
 
+// Component
 public class StatusUpdateTask implements Task, Initializable {
-	@Inject
+	// Inject
 	private MessageStatistics m_statistics;
 
-	@Inject
-	private ClientConfigManager m_manager;
+	// Inject
+	private ConfigureManager m_configureManager;
 
 	private boolean m_active = true;
 
@@ -68,8 +85,10 @@ public class StatusUpdateTask implements Task, Initializable {
 	private void buildExtensionData(StatusInfo status) {
 		StatusExtensionRegister res = StatusExtensionRegister.getInstance();
 		List<StatusExtension> extensions = res.getStatusExtension();
+		int length = extensions.size();
 
-		for (StatusExtension extension : extensions) {
+		for (int i = 0; i < length; i++) {
+			StatusExtension extension = extensions.get(i);
 			String id = extension.getId();
 			String des = extension.getDescription();
 			Map<String, String> propertis = extension.getProperties();
@@ -92,7 +111,9 @@ public class StatusUpdateTask implements Task, Initializable {
 	}
 
 	@Override
-	public void initialize() throws InitializationException {
+	public void initialize(ComponentContext ctx) {
+		m_configureManager = ctx.lookup(ConfigureManager.class);
+		m_statistics = ctx.lookup(MessageStatistics.class);
 		m_ipAddress = NetworkInterfaceManager.INSTANCE.getLocalHostAddress();
 	}
 
@@ -137,39 +158,43 @@ public class StatusUpdateTask implements Task, Initializable {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-		MessageProducer cat = Cat.getProducer();
-		Transaction reboot = cat.newTransaction("System", "Reboot");
+
+		Transaction reboot = Cat.newTransaction("System", "Reboot");
 
 		reboot.setStatus(Message.SUCCESS);
-		cat.logEvent("Reboot", NetworkInterfaceManager.INSTANCE.getLocalHostAddress(), Message.SUCCESS, null);
+		Cat.logEvent("Reboot", NetworkInterfaceManager.INSTANCE.getLocalHostAddress(), Message.SUCCESS, null);
 		reboot.complete();
 
 		while (m_active) {
 			long start = MilliSecondTimer.currentTimeMillis();
 
-			if (m_manager.isCatEnabled()) {
-				Transaction t = cat.newTransaction("System", "Status");
-				Heartbeat h = cat.newHeartbeat("Heartbeat", m_ipAddress);
+			if (m_configureManager.isEnabled()) {
+				Transaction t = Cat.newTransaction("System", "Status");
+				Heartbeat h = Cat.newHeartbeat("Heartbeat", m_ipAddress);
 				StatusInfo status = new StatusInfo();
+				boolean dumpLocked = m_configureManager.getBooleanProperty(ConfigureProperty.DUMP_LOCKED, false);
 
-				t.addData("dumpLocked", m_manager.isDumpLocked());
+				t.addData("dumpLocked", dumpLocked);
+
+				StatusInfoCollector collector = new StatusInfoCollector(m_statistics, m_jars);
+
 				try {
-					StatusInfoCollector statusInfoCollector = new StatusInfoCollector(m_statistics, m_jars);
-
-					status.accept(statusInfoCollector.setDumpLocked(m_manager.isDumpLocked()));
+					status.accept(collector.setDumpLocked(dumpLocked));
 
 					buildExtensionData(status);
 					h.addData(status.toString());
 					h.setStatus(Message.SUCCESS);
 				} catch (Throwable e) {
 					h.setStatus(e);
-					cat.logError(e);
+					Cat.logError(e);
 				} finally {
 					h.complete();
 				}
+				Cat.logEvent("Heartbeat", "jstack", Event.SUCCESS, collector.getJstackInfo());
 				t.setStatus(Message.SUCCESS);
 				t.complete();
 			}
+
 			long elapsed = MilliSecondTimer.currentTimeMillis() - start;
 
 			if (elapsed < m_interval) {

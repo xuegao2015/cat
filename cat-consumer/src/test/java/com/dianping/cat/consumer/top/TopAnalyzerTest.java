@@ -1,10 +1,27 @@
+/*
+ * Copyright (c) 2011-2018, Meituan Dianping. All Rights Reserved.
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements. See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.dianping.cat.consumer.top;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
-import junit.framework.Assert;
-
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.unidal.helper.Files;
@@ -20,8 +37,8 @@ import com.dianping.cat.message.Transaction;
 import com.dianping.cat.message.internal.DefaultEvent;
 import com.dianping.cat.message.internal.DefaultHeartbeat;
 import com.dianping.cat.message.internal.DefaultTransaction;
+import com.dianping.cat.message.spi.DefaultMessageTree;
 import com.dianping.cat.message.spi.MessageTree;
-import com.dianping.cat.message.spi.internal.DefaultMessageTree;
 
 public class TopAnalyzerTest extends ComponentTestCase {
 
@@ -46,7 +63,7 @@ public class TopAnalyzerTest extends ComponentTestCase {
 	@Test
 	public void testProcess() throws Exception {
 		for (int i = 1; i <= 100; i++) {
-			MessageTree tree = generateMessageTree(i);
+			MessageTree tree = ((DefaultMessageTree) generateMessageTree(i)).copyForTest();
 
 			m_analyzer.process(tree);
 		}
@@ -67,7 +84,7 @@ public class TopAnalyzerTest extends ComponentTestCase {
 		tree.setThreadGroupName("cat");
 		tree.setThreadName("Cat-ProblemAnalyzer-Test");
 		if (i < 10) {
-			DefaultEvent error = new DefaultEvent("Error", "Error", null);
+			DefaultEvent error = new DefaultEvent("Error", "Error");
 
 			error.setTimestamp(m_timestamp);
 			tree.setMessage(error);
@@ -77,16 +94,16 @@ public class TopAnalyzerTest extends ComponentTestCase {
 			heartbeat.setTimestamp(m_timestamp);
 			tree.setMessage(heartbeat);
 		} else {
-			DefaultTransaction t = new DefaultTransaction("A", "n" + i % 2, null);
+			DefaultTransaction t = new DefaultTransaction("A", "n" + i % 2);
 
 			t.setTimestamp(m_timestamp);
 			t.setDurationInMillis(i * 50);
 
-			Event error = new DefaultEvent("Error", "Error", null);
+			Event error = new DefaultEvent("Error", "Error");
 			((DefaultEvent) error).setTimestamp(m_timestamp + TimeHelper.ONE_MINUTE);
-			Event exception = new DefaultEvent("Other", "Exception", null);
+			Event exception = new DefaultEvent("Other", "Exception");
 			Heartbeat heartbeat = new DefaultHeartbeat("heartbeat", "heartbeat");
-			DefaultTransaction transaction = new DefaultTransaction("Transaction", "Transaction", null);
+			DefaultTransaction transaction = new DefaultTransaction("Transaction", "Transaction");
 
 			transaction.setStatus(Transaction.SUCCESS);
 			t.addChild(transaction);

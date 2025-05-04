@@ -1,10 +1,26 @@
+/*
+ * Copyright (c) 2011-2018, Meituan Dianping. All Rights Reserved.
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements. See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.dianping.cat.consumer.matrix;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.TimeZone;
-
-import junit.framework.Assert;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -13,11 +29,14 @@ import org.unidal.lookup.ComponentTestCase;
 
 import com.dianping.cat.Constants;
 import com.dianping.cat.analysis.MessageAnalyzer;
+import com.dianping.cat.consumer.TestHelper;
 import com.dianping.cat.consumer.matrix.model.entity.MatrixReport;
 import com.dianping.cat.message.Message;
 import com.dianping.cat.message.internal.DefaultTransaction;
+import com.dianping.cat.message.spi.DefaultMessageTree;
 import com.dianping.cat.message.spi.MessageTree;
-import com.dianping.cat.message.spi.internal.DefaultMessageTree;
+
+import org.junit.Assert;
 
 public class MatrixAnalyzerTest extends ComponentTestCase {
 
@@ -53,9 +72,12 @@ public class MatrixAnalyzerTest extends ComponentTestCase {
 		MatrixReport report = m_analyzer.getReport(m_domain);
 
 		String expected = Files.forIO().readFrom(getClass().getResourceAsStream("matrix_analyzer.xml"), "utf-8");
-		Assert.assertEquals(expected.replaceAll("\r", ""), report.toString().replaceAll("\r", ""));
+		//Assert.assertEquals(expected.replaceAll("\r", ""), report.toString().replaceAll("\r", ""));
+		
+		MatrixReport expected4report = com.dianping.cat.consumer.matrix.model.transform.DefaultSaxParser.parse(expected);
+		Assert.assertTrue(TestHelper.isEquals(expected4report,report));
 	}
-
+	
 	protected MessageTree generateMessageTree(int i) {
 		MessageTree tree = new DefaultMessageTree();
 
@@ -68,14 +90,14 @@ public class MatrixAnalyzerTest extends ComponentTestCase {
 		DefaultTransaction event;
 
 		if (i % 3 == 0) {
-			t = new DefaultTransaction("URL", "Cat-Test-Call", null);
-			event = new DefaultTransaction("Call", "192.168.1.0:3000:class:method1", null);
+			t = new DefaultTransaction("URL", "Cat-Test-Call");
+			event = new DefaultTransaction("Call", "192.168.1.0:3000:class:method1");
 		} else if (i % 3 == 1) {
-			t = new DefaultTransaction("PigeonService", "Cat-Test-Service", null);
-			event = new DefaultTransaction("SQL", "192.168.1.2:3000:class:method2", null);
+			t = new DefaultTransaction("PigeonService", "Cat-Test-Service");
+			event = new DefaultTransaction("SQL", "192.168.1.2:3000:class:method2");
 		} else {
-			t = new DefaultTransaction("Service", "Cat-Test-Service", null);
-			event = new DefaultTransaction("Cache.CatTest", "192.168.1.2:3000:class:method2", null);
+			t = new DefaultTransaction("Service", "Cat-Test-Service");
+			event = new DefaultTransaction("Cache.CatTest", "192.168.1.2:3000:class:method2");
 		}
 
 		event.setTimestamp(m_timestamp + 5 * 60 * 1000);
